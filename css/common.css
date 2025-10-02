@@ -43,6 +43,35 @@ html {
 }
 
 .mths-tibia-news-ticker-permalink {
-	color: inherit !important;
-	font-weight: inherit !important;
+        color: inherit !important;
+        font-weight: inherit !important;
+}
+
+.mths-tibia-sort-button {
+        background: none;
+        border: 0;
+        color: inherit;
+        cursor: pointer;
+        font: inherit;
+        margin-left: 0.25em;
+        padding: 0;
+}
+
+.mths-tibia-sort-button:focus {
+        outline: 1px dotted currentColor;
+        outline-offset: 2px;
+}
+
+.mths-tibia-sort-button:hover {
+        text-decoration: underline;
+}
+
+.mths-tibia-sort-button[aria-pressed="true"] {
+        font-weight: bold;
+}
+
+.mths-tibia-character-index {
+        display: inline-block;
+        min-width: 2ch;
+        text-align: right;
 }
