@@ -214,15 +214,207 @@ if (elCharacters) {
 
 	// Handle other characters on the account.
 	$table('Characters', function(table) {
-		const cells = table.querySelectorAll('td[style^="width: 20%"]');
-		each(cells, function(cell) {
-			const text = cell.textContent;
-			const charName = text.match(/^\d+\.[\xA0\x20]([^\(]+)/)[1].trim();
-			cell.classList.add('mths-tibia-block-links');
-			// `<nobr>`… I know! But that’s what they’re using:
-			cell.innerHTML = strip`<nobr><a href="${ ORIGIN }/community/?subtopic=
-				characters&amp;name=${ encode(charName) }">${ text }</a></nobr>`;
+		const applyFallbackLinks = function() {
+			const cells = table.querySelectorAll('td[style^="width: 20%"]');
+			each(cells, function(cell) {
+				const text = normalizeSpaces(cell.textContent);
+				const match = text.match(/^\d+\.[\xA0\x20]([^\(]+)/);
+				const charName = normalizeSpaces(match ? match[1] : text).trim();
+				cell.classList.add('mths-tibia-block-links');
+				const nobr = document.createElement('nobr');
+				const anchor = document.createElement('a');
+				anchor.href = `${ ORIGIN }/community/?subtopic=characters&name=${ encode(charName) }`;
+				anchor.textContent = text;
+				nobr.appendChild(anchor);
+				cell.textContent = '';
+				cell.appendChild(nobr);
+			});
+		};
+
+		const rows = Array.from(table.querySelectorAll('tr'));
+		const headerRow = rows.find(function(row) {
+			if (!row.cells.length) {
+				return false;
+			}
+			const texts = Array.from(row.cells, function(cell) {
+				return normalizeSpaces(cell.textContent).trim().toLowerCase();
+			});
+			return texts.includes('name') && texts.includes('world');
 		});
+		if (!headerRow) {
+			applyFallbackLinks();
+			return;
+		}
+
+		const headerCells = Array.from(headerRow.cells);
+		const nameIndex = headerCells.findIndex(function(cell) {
+			return /name/i.test(normalizeSpaces(cell.textContent));
+		});
+		const worldIndex = headerCells.findIndex(function(cell) {
+			return /world/i.test(normalizeSpaces(cell.textContent));
+		});
+		if (nameIndex == -1 || worldIndex == -1) {
+			applyFallbackLinks();
+			return;
+		}
+
+		let dataRows = rows.filter(function(row) {
+			if (row === headerRow || row.cells.length <= worldIndex) {
+				return false;
+			}
+			if (row.classList.contains('LabelH')) {
+				return false;
+			}
+			const nameCell = row.cells[nameIndex];
+			const worldCell = row.cells[worldIndex];
+			return !!(nameCell && worldCell && normalizeSpaces(nameCell.textContent).trim());
+		});
+		if (!dataRows.length) {
+			applyFallbackLinks();
+			return;
+		}
+
+		const parent = dataRows[0].parentNode;
+		if (!parent) {
+			applyFallbackLinks();
+			return;
+		}
+
+		each(dataRows, function(row, index) {
+			row.dataset.originalOrder = index;
+			const nameCell = row.cells[nameIndex];
+			const rawText = normalizeSpaces(nameCell.textContent);
+			const numberMatch = rawText.match(/^(\d+)[\.)]?\s*(.*)$/);
+			let remainder = rawText;
+			if (numberMatch) {
+				remainder = numberMatch[2];
+			}
+			const nameParts = remainder.match(/^(.*?)(\s*\(.*\))?$/);
+			let charName = nameParts ? nameParts[1] : remainder;
+			let suffix = nameParts && nameParts[2] ? nameParts[2] : '';
+			charName = normalizeSpaces(charName).trim();
+			if (!charName) {
+				charName = remainder.trim();
+			}
+
+			row.dataset.characterNameDisplay = charName;
+
+			nameCell.classList.add('mths-tibia-block-links');
+			nameCell.textContent = '';
+			const nobr = document.createElement('nobr');
+			const indexElement = document.createElement('span');
+			indexElement.className = 'mths-tibia-character-index';
+			indexElement.textContent = `${ index + 1 }.`;
+			nobr.appendChild(indexElement);
+			nobr.appendChild(document.createTextNode(' '));
+			const anchor = document.createElement('a');
+			anchor.href = `${ ORIGIN }/community/?subtopic=characters&name=${ encode(charName) }`;
+			anchor.textContent = charName;
+			nobr.appendChild(anchor);
+			if (suffix) {
+				nobr.appendChild(document.createTextNode(suffix));
+			}
+			nameCell.appendChild(nobr);
+
+			const worldCell = row.cells[worldIndex];
+			const worldName = normalizeSpaces(worldCell.textContent).trim();
+			row.dataset.characterWorldDisplay = worldName;
+			worldCell.classList.add('mths-tibia-block-links');
+			worldCell.textContent = '';
+			if (worldName) {
+				const worldAnchor = document.createElement('a');
+				worldAnchor.href = `${ ORIGIN }/community/?subtopic=worlds&order=level_desc&world=${ encode(worldName) }`;
+				worldAnchor.textContent = worldName;
+				worldCell.appendChild(worldAnchor);
+			}
+		});
+
+		let sortKey;
+		let sortDirection = 1;
+		const buttons = [];
+
+		const updateIndexes = function() {
+			each(dataRows, function(row, index) {
+				const indexElement = row.querySelector('.mths-tibia-character-index');
+				if (indexElement) {
+					indexElement.textContent = `${ index + 1 }.`;
+				}
+			});
+		};
+
+		const updateZebra = function() {
+			each(dataRows, function(row, index) {
+				if (row.classList.contains('Odd') || row.classList.contains('Even')) {
+					row.classList.remove('Odd', 'Even');
+					row.classList.add(index % 2 ? 'Even' : 'Odd');
+				}
+			});
+		};
+
+		const updateButtons = function() {
+			each(buttons, function(item) {
+				const {element, key, label} = item;
+				const isActive = key === sortKey;
+				element.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+				if (isActive) {
+					const directionText = sortDirection === 1 ? 'ascending' : 'descending';
+					element.textContent = sortDirection === 1 ? '▲' : '▼';
+					element.setAttribute('aria-label', `Sort by ${ label } (${ directionText })`);
+					element.title = `Sort by ${ label } (${ directionText })`;
+				} else {
+					element.textContent = '⇅';
+					element.setAttribute('aria-label', `Sort by ${ label }`);
+					element.title = `Sort by ${ label }`;
+				}
+			});
+		};
+
+		const compareRows = function(a, b, key) {
+			const datasetKey = key === 'name' ? 'characterNameDisplay' : 'characterWorldDisplay';
+			const valueA = a.dataset[datasetKey] || '';
+			const valueB = b.dataset[datasetKey] || '';
+			const result = valueA.localeCompare(valueB, undefined, {sensitivity: 'base'});
+			if (result) {
+				return result;
+			}
+			return Number(a.dataset.originalOrder) - Number(b.dataset.originalOrder);
+		};
+
+		const sortRows = function(key, direction) {
+			sortKey = key;
+			sortDirection = direction;
+			dataRows.sort(function(a, b) {
+				return compareRows(a, b, key) * direction;
+			});
+			each(dataRows, function(row) {
+				parent.appendChild(row);
+			});
+			updateIndexes();
+			updateZebra();
+			updateButtons();
+		};
+
+		const createSortButton = function(cell, key, label) {
+			if (cell.querySelector('.mths-tibia-sort-button')) {
+				return;
+			}
+			const button = document.createElement('button');
+			button.type = 'button';
+			button.className = 'mths-tibia-sort-button';
+			button.textContent = '⇅';
+			button.setAttribute('aria-label', `Sort by ${ label }`);
+			button.title = `Sort by ${ label }`;
+			button.addEventListener('click', function() {
+				const direction = sortKey === key ? sortDirection * -1 : 1;
+				sortRows(key, direction);
+			});
+			cell.appendChild(button);
+			buttons.push({element: button, key, label});
+		};
+
+		createSortButton(headerCells[nameIndex], 'name', 'name');
+		createSortButton(headerCells[worldIndex], 'world', 'world');
+		updateButtons();
 	});
 
 	// Make the character search form perform a clean GET.
